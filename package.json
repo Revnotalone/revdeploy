@@ -10,21 +10,21 @@
   "keywords": [
     "telegram",
     "bot",
-    "vercel",
+    "vercel", 
     "deploy",
-    "html"
+    "html",
+    "railway"
   ],
   "author": "Your Name",
   "license": "MIT",
   "dependencies": {
     "node-telegram-bot-api": "^0.64.0",
-    "axios": "^1.6.0",
-    "form-data": "^4.0.0"
+    "axios": "^1.6.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0"
   }
 }

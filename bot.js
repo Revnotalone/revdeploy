@@ -30,21 +30,17 @@ function getMainKeyboard() {
     };
 }
 
-// ====================================================================
-// BAGIAN KODE YANG DIPERBAIKI (FUNGSI DEPLOY KE VERCEL)
-// ====================================================================
+// GANTI FUNGSI LAMA DENGAN YANG INI
 async function deployToVercel(htmlContent, projectName, userId) {
     try {
         const cleanProjectName = projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
-        // File yang akan di-deploy
         const files = [
             {
                 file: 'index.html',
                 data: htmlContent
             },
             {
-                // vercel.json untuk memastikan routing berjalan baik
                 file: 'vercel.json',
                 data: JSON.stringify({
                     "rewrites": [
@@ -54,14 +50,12 @@ async function deployToVercel(htmlContent, projectName, userId) {
             }
         ];
 
-        // Data untuk request deployment
         const deploymentData = {
-            name: cleanProjectName, // Nama project di Vercel
+            name: cleanProjectName,
             files: files,
             projectSettings: {
-                framework: null // Tidak menggunakan framework spesifik
+                framework: null
             },
-            // PENTING: Beritahu Vercel ini adalah deployment produksi
             target: 'production'
         };
 
@@ -70,12 +64,9 @@ async function deployToVercel(htmlContent, projectName, userId) {
                 'Authorization': `Bearer ${VERCEL_TOKEN}`,
                 'Content-Type': 'application/json'
             },
-            // Tambahkan ?forceNew=1 untuk membuat project baru jika belum ada
+            // Params yang disederhanakan. Cukup forceNew.
             params: {
-                forceNew: '1',
-                // Pastikan deployment terhubung ke project yang benar
-                // Ini penting jika project sudah ada
-                "projectId": cleanProjectName
+                forceNew: '1'
             }
         });
 
@@ -83,11 +74,9 @@ async function deployToVercel(htmlContent, projectName, userId) {
             throw new Error('Deployment failed: No URL returned from Vercel.');
         }
 
-        // Dengan target: 'production', URL yang dikembalikan sudah URL bersih
         const finalUrl = `https://${deployResponse.data.url}`;
         const deploymentId = deployResponse.data.uid;
 
-        // Simpan info website user
         const userWebsites = userSessions.get(`websites_${userId}`) || [];
         userWebsites.push({
             name: cleanProjectName,
@@ -101,13 +90,12 @@ async function deployToVercel(htmlContent, projectName, userId) {
             success: true,
             url: finalUrl,
             deploymentId: deploymentId,
-            isCleanUrl: true // Menandakan URL sudah bersih
+            isCleanUrl: true
         };
 
     } catch (error) {
         console.error('Vercel deployment error:', error.response?.data || error.message);
         const errorMessage = error.response?.data?.error?.message || 'Unknown error occurred.';
-        // Memberikan pesan error yang lebih jelas jika nama sudah digunakan
         if (errorMessage.includes('is a reserved name') || errorMessage.includes('is already owned')) {
             return { success: false, error: `Nama project "${projectName}" sudah digunakan atau terlarang. Silakan pilih nama lain.` };
         }

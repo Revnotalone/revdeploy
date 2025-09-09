@@ -1,12 +1,11 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
-const FormData = require('form-data');
+const http = require('http');
 
-// Konfigurasi Bot
-const BOT_TOKEN = '7347043121:AAEW1JWmNTl6YL9X1ZhsvfxSWZEZ6_KjHQA'; // Ganti dengan token bot Telegram Anda
-const VERCEL_TOKEN = 'VeJ89CpZ1n6oeu8obLtGEMLx'; // Ganti dengan token Vercel Anda
+// Environment variables untuk Railway
+const BOT_TOKEN = process.env.BOT_TOKEN || 'YOUR_TELEGRAM_BOT_TOKEN';
+const VERCEL_TOKEN = process.env.VERCEL_TOKEN || 'YOUR_VERCEL_TOKEN';
+const PORT = process.env.PORT || 3000;
 
 // Inisialisasi bot
 const bot = new TelegramBot(BOT_TOKEN, { polling: true });
@@ -422,20 +421,31 @@ bot.on('polling_error', (error) => {
     console.log('Polling error:', error);
 });
 
-console.log('🤖 Telegram Vercel Deploy Bot started successfully!');
-console.log(`🌐 Running on port: ${PORT}`);
-console.log('📝 Make sure BOT_TOKEN and VERCEL_TOKEN are set in environment variables.');
-
 // Simple HTTP server untuk Railway
-const http = require('http');
 const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Telegram Vercel Deploy Bot is running! 🚀');
+    res.writeHead(200, { 
+        'Content-Type': 'text/plain',
+        'Access-Control-Allow-Origin': '*'
+    });
+    res.end('🚀 Telegram Vercel Deploy Bot is running successfully!');
 });
 
 server.listen(PORT, () => {
-    console.log(`🚀 HTTP server listening on port ${PORT}`);
+    console.log('🤖 Telegram Vercel Deploy Bot started successfully!');
+    console.log(`🌐 HTTP server running on port: ${PORT}`);
+    console.log('📝 Environment variables loaded from Railway');
+    console.log('✅ Bot is ready to receive messages');
 });
 
-// Export untuk testing atau modular usage
+// Graceful shutdown
+process.on('SIGTERM', () => {
+    console.log('👋 Received SIGTERM, shutting down gracefully');
+    server.close(() => {
+        console.log('🔚 HTTP server closed');
+        bot.stopPolling();
+        process.exit(0);
+    });
+});
+
+// Export untuk testing
 module.exports = { bot, deployToVercel };

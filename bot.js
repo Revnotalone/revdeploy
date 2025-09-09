@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const FormData = require('form-data');
 
-// Konfigurasi Bot - Menggunakan Environment Variables untuk Railway
+// Konfigurasi Bot - Environment Variables untuk Railway
 const BOT_TOKEN = process.env.BOT_TOKEN || 'YOUR_TELEGRAM_BOT_TOKEN';
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN || 'YOUR_VERCEL_TOKEN';
 const PORT = process.env.PORT || 3000;
@@ -29,10 +29,47 @@ function getMainKeyboard() {
     };
 }
 
-// Fungsi untuk deploy ke Vercel
+// Fungsi untuk deploy ke Vercel dengan URL bersih
 async function deployToVercel(htmlContent, projectName, userId) {
     try {
-        // Buat struktur file untuk Vercel
+        const cleanProjectName = projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+        
+        // Step 1: Cek apakah project sudah ada
+        let existingProject = null;
+        try {
+            const projectsResponse = await axios.get('https://api.vercel.com/v9/projects', {
+                headers: {
+                    'Authorization': `Bearer ${VERCEL_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            existingProject = projectsResponse.data.projects.find(p => p.name === cleanProjectName);
+        } catch (error) {
+            console.log('Error checking existing projects:', error.message);
+        }
+
+        // Step 2: Jika project belum ada, buat project baru
+        if (!existingProject) {
+            try {
+                const createProjectData = {
+                    name: cleanProjectName,
+                    framework: null
+                };
+
+                await axios.post('https://api.vercel.com/v10/projects', createProjectData, {
+                    headers: {
+                        'Authorization': `Bearer ${VERCEL_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+            } catch (projectError) {
+                console.log('Project creation info:', projectError.response?.data || projectError.message);
+                // Lanjut deploy meski project creation gagal
+            }
+        }
+
+        // Step 3: Deploy files
         const files = [
             {
                 file: 'index.html',
@@ -57,49 +94,94 @@ async function deployToVercel(htmlContent, projectName, userId) {
             }
         ];
 
-        // Deploy ke Vercel menggunakan API
         const deploymentData = {
-            name: projectName.toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+            name: cleanProjectName,
             files: files,
             projectSettings: {
                 framework: null
-            }
+            },
+            target: 'production'
         };
 
-        const response = await axios.post('https://api.vercel.com/v13/deployments', deploymentData, {
+        const deployResponse = await axios.post('https://api.vercel.com/v13/deployments', deploymentData, {
             headers: {
                 'Authorization': `Bearer ${VERCEL_TOKEN}`,
                 'Content-Type': 'application/json'
             }
         });
 
-        if (response.data && response.data.url) {
-            // Coba dapatkan URL yang lebih bersih jika tersedia
-            let finalUrl = `https://${response.data.url}`;
-            
-            // Jika ada alias URL yang lebih bersih, gunakan itu
-            if (response.data.alias && response.data.alias.length > 0) {
-                finalUrl = `https://${response.data.alias[0]}`;
-            }
-            
-            // Simpan info website user
-            const userWebsites = userSessions.get(`websites_${userId}`) || [];
-            userWebsites.push({
-                name: cleanProjectName,
-                url: finalUrl,
-                deployedAt: new Date().toISOString(),
-                deploymentId: response.data.uid
-            });
-            userSessions.set(`websites_${userId}`, userWebsites);
-
-            return {
-                success: true,
-                url: finalUrl,
-                deploymentId: response.data.uid
-            };
-        } else {
+        if (!deployResponse.data || !deployResponse.data.url) {
             throw new Error('Deployment failed: No URL returned');
         }
+
+        const deploymentUrl = `https://${deployResponse.data.url}`;
+        const deploymentId = deployResponse.data.uid;
+
+        // Step 4: Coba set alias ke URL bersih
+        let finalUrl = deploymentUrl;
+        try {
+            const aliasData = {
+                alias: `${cleanProjectName}.vercel.app`
+            };
+
+            const aliasResponse = await axios.post(`https://api.vercel.com/v2/deployments/${deploymentId}/aliases`, aliasData, {
+                headers: {
+                    'Authorization': `Bearer ${VERCEL_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (aliasResponse.data && aliasResponse.data.alias) {
+                finalUrl = `https://${aliasResponse.data.alias}`;
+            } else if (aliasResponse.status === 200) {
+                // Jika response OK, gunakan alias yang diminta
+                finalUrl = `https://${cleanProjectName}.vercel.app`;
+            }
+        } catch (aliasError) {
+            console.log('Alias creation failed:', aliasError.response?.data || aliasError.message);
+            
+            // Coba alternatif dengan timestamp
+            try {
+                const timestamp = Date.now().toString().slice(-4);
+                const alternativeAlias = `${cleanProjectName}${timestamp}.vercel.app`;
+                
+                const altAliasData = {
+                    alias: alternativeAlias
+                };
+
+                const altAliasResponse = await axios.post(`https://api.vercel.com/v2/deployments/${deploymentId}/aliases`, altAliasData, {
+                    headers: {
+                        'Authorization': `Bearer ${VERCEL_TOKEN}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (altAliasResponse.data && altAliasResponse.data.alias) {
+                    finalUrl = `https://${altAliasResponse.data.alias}`;
+                } else if (altAliasResponse.status === 200) {
+                    finalUrl = `https://${alternativeAlias}`;
+                }
+            } catch (altError) {
+                console.log('Alternative alias also failed, using default URL');
+            }
+        }
+
+        // Simpan info website user
+        const userWebsites = userSessions.get(`websites_${userId}`) || [];
+        userWebsites.push({
+            name: cleanProjectName,
+            url: finalUrl,
+            deployedAt: new Date().toISOString(),
+            deploymentId: deploymentId
+        });
+        userSessions.set(`websites_${userId}`, userWebsites);
+
+        return {
+            success: true,
+            url: finalUrl,
+            deploymentId: deploymentId
+        };
+
     } catch (error) {
         console.error('Vercel deployment error:', error.response?.data || error.message);
         return {
@@ -432,10 +514,7 @@ bot.on('polling_error', (error) => {
     console.log('Polling error:', error);
 });
 
-console.log('🤖 Telegram Vercel Deploy Bot started successfully!');
-console.log('📝 Make sure to set your BOT_TOKEN and VERCEL_TOKEN in the configuration.');
-
-// Simple HTTP server untuk Railway (untuk keep-alive)
+// Simple HTTP server untuk Railway
 const express = require('express');
 const app = express();
 
@@ -454,6 +533,9 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server running on port ${PORT}`);
 });
+
+console.log('🤖 Telegram Vercel Deploy Bot started successfully!');
+console.log('📝 Make sure to set your BOT_TOKEN and VERCEL_TOKEN in the configuration.');
 
 // Export untuk testing atau modular usage
 module.exports = { bot, deployToVercel };

@@ -1,8 +1,10 @@
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
-const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const FormData = require('form-data');
 
-// Environment variables untuk Railway
+// Konfigurasi Bot - Menggunakan Environment Variables untuk Railway
 const BOT_TOKEN = process.env.BOT_TOKEN || 'YOUR_TELEGRAM_BOT_TOKEN';
 const VERCEL_TOKEN = process.env.VERCEL_TOKEN || 'YOUR_VERCEL_TOKEN';
 const PORT = process.env.PORT || 3000;
@@ -72,18 +74,27 @@ async function deployToVercel(htmlContent, projectName, userId) {
         });
 
         if (response.data && response.data.url) {
+            // Coba dapatkan URL yang lebih bersih jika tersedia
+            let finalUrl = `https://${response.data.url}`;
+            
+            // Jika ada alias URL yang lebih bersih, gunakan itu
+            if (response.data.alias && response.data.alias.length > 0) {
+                finalUrl = `https://${response.data.alias[0]}`;
+            }
+            
             // Simpan info website user
             const userWebsites = userSessions.get(`websites_${userId}`) || [];
             userWebsites.push({
-                name: projectName,
-                url: `https://${response.data.url}`,
-                deployedAt: new Date().toISOString()
+                name: cleanProjectName,
+                url: finalUrl,
+                deployedAt: new Date().toISOString(),
+                deploymentId: response.data.uid
             });
             userSessions.set(`websites_${userId}`, userWebsites);
 
             return {
                 success: true,
-                url: `https://${response.data.url}`,
+                url: finalUrl,
                 deploymentId: response.data.uid
             };
         } else {
@@ -421,31 +432,28 @@ bot.on('polling_error', (error) => {
     console.log('Polling error:', error);
 });
 
-// Simple HTTP server untuk Railway
-const server = http.createServer((req, res) => {
-    res.writeHead(200, { 
-        'Content-Type': 'text/plain',
-        'Access-Control-Allow-Origin': '*'
-    });
-    res.end('🚀 Telegram Vercel Deploy Bot is running successfully!');
-});
+console.log('🤖 Telegram Vercel Deploy Bot started successfully!');
+console.log('📝 Make sure to set your BOT_TOKEN and VERCEL_TOKEN in the configuration.');
 
-server.listen(PORT, () => {
-    console.log('🤖 Telegram Vercel Deploy Bot started successfully!');
-    console.log(`🌐 HTTP server running on port: ${PORT}`);
-    console.log('📝 Environment variables loaded from Railway');
-    console.log('✅ Bot is ready to receive messages');
-});
+// Simple HTTP server untuk Railway (untuk keep-alive)
+const express = require('express');
+const app = express();
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-    console.log('👋 Received SIGTERM, shutting down gracefully');
-    server.close(() => {
-        console.log('🔚 HTTP server closed');
-        bot.stopPolling();
-        process.exit(0);
+app.get('/', (req, res) => {
+    res.json({
+        status: 'Bot is running!',
+        bot_username: bot.options?.username || 'Unknown',
+        uptime: process.uptime()
     });
 });
 
-// Export untuk testing
+app.get('/health', (req, res) => {
+    res.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+    console.log(`🚀 Server running on port ${PORT}`);
+});
+
+// Export untuk testing atau modular usage
 module.exports = { bot, deployToVercel };

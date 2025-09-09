@@ -445,7 +445,7 @@ bot.on('document', async (msg) => {
             userSessions.delete(`name_${userId}`);
 
             // Kirim hasil sukses
-            const successMessage = `
+            let successMessage = `
 🎉 *Website berhasil di-deploy!*
 
 📝 *Detail Website:*
@@ -458,6 +458,22 @@ ${deployResult.url}
 
 💡 Website Anda sudah bisa diakses oleh siapa saja di internet!
             `;
+
+            // Tambahkan info jika URL masih belum bersih
+            if (!deployResult.isCleanUrl) {
+                successMessage += `
+
+ℹ️ *Info URL:*
+URL ini adalah URL sementara dari Vercel. Untuk mendapatkan URL yang lebih pendek seperti \`${projectName}.vercel.app\`, Anda bisa:
+
+1. Login ke vercel.com
+2. Cari project "${projectName}"
+3. Settings → Domains → Add Domain
+4. Masukkan: \`${projectName}.vercel.app\`
+
+Atau deploy ulang dengan nama yang lebih unik!
+                `;
+            };
 
             bot.sendMessage(chatId, successMessage, {
                 parse_mode: 'Markdown',
